@@ -16,7 +16,7 @@ jobs:
           python-version: "3.12"
         
       - name: Pytest Install
-        run: pip install pytest
+        run: pip install pytest pytest-django
 
       - name: Test Run
         run: pytest    
