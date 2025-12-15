@@ -1,0 +1,49 @@
+name: Deploy Django App via CodeDeploy
+# 워크플로 이름: AWS CodeDeploy를 통해 Django 앱을 EC2에 배포
+
+on:
+  push:
+    branches:
+      - main          # main 브랜치에 push될 때마다 배포 자동 실행
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest  # GitHub Actions가 실행될 호스트 환경 (Ubuntu 최신 버전)
+
+    steps:
+      # GitHub 저장소의 소스 코드를 체크아웃
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # AWS CLI 인증 설정
+      #    GitHub Secrets에 저장된 IAM 사용자 자격 증명을 사용하여 AWS CLI 구성
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}        # IAM 사용자 Access Key
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }} # IAM 사용자 Secret Key
+          aws-region: ap-northeast-2                                  # 서울 리전
+
+      # 배포용 zip 패키지 생성
+      #    - 현재 폴더 전체를 zip으로 묶되, 불필요한 폴더/파일 제외
+      - name: Create deployment package
+        run: |
+          zip -r mysite-deploy.zip . \
+            -x "*.git*" ".github/*" "__pycache__/*" "*.pyc"
+
+      # 생성한 zip 파일을 S3 버킷에 업로드
+      #    - CodeDeploy가 S3에서 해당 zip을 받아 EC2에 배포하게 됨
+      - name: Upload to S3
+        run: |
+          aws s3 cp mysite-deploy.zip s3://${{ secrets.S3_BUCKET }}/mysite-deploy.zip
+
+      # CodeDeploy를 호출하여 배포 실행
+      #    - 지정된 Application, Deployment Group에 대해 새 배포를 생성
+      #    - CodeDeploy가 EC2 인스턴스의 agent를 통해 자동으로 배포 수행
+      - name: Deploy with CodeDeploy
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ secrets.CODEDEPLOY_APPLICATION }} \   # CodeDeploy 애플리케이션 이름
+            --deployment-group-name ${{ secrets.CODEDEPLOY_DEPLOYMENT_GROUP }} \ # 배포 그룹 이름
+            --s3-location bucket=${{ secrets.S3_BUCKET }},key=mysite-deploy.zip,bundleType=zip \ # S3 경로 및 파일 지정
+            --region ap-northeast-2  # 서울 리전
